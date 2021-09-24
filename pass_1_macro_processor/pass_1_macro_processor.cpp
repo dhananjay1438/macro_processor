@@ -1,8 +1,9 @@
+#include <algorithm>
 #include <array>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <regex>
+#include <sstream>
 #include <vector>
 
 /*
@@ -15,7 +16,7 @@
  *  	index;
  *  }
  * }
- * 2) Macro definition table (complete lines from macro definition to MEND)  {
+ * 2) Macro definition table (complete lines from macro definition to mend)  {
  * 		std::vector<std::string>
  * }
  *
@@ -24,19 +25,7 @@
  * }
  */
 
-std::string remove_trailing_whitespaces(std::string string) {
-  size_t trailing_whitespaces = 0;
-  if (string.size() > 0) {
-    for (auto &ch : string) {
-      if (std::isspace(ch)) {
-        trailing_whitespaces++;
-      } else {
-        break;
-      }
-    }
-  }
-  return string.substr(trailing_whitespaces, string.size());
-}
+const std::string WHITESPACE = " \t";
 // Macro name table
 class MNT {
 public:
@@ -58,6 +47,38 @@ MNT::MNT(std::string name, int index) {
 int MNT::get_index() { return index; }
 std::string MNT::get_name() { return name; }
 
+std::string create_mnt(std::vector<std::string> &mdt, size_t i,
+                       std::vector<MNT> &mnt, bool on_next_line) {
+  std::string macro_name;
+  if (on_next_line) {
+    size_t pos = mdt[i].find(" ");
+    macro_name = mdt[i].substr(0, pos);
+    mnt.push_back(MNT(macro_name, static_cast<int>(i)));
+  } else {
+    size_t pos = mdt[i].find(" ", 6);
+    macro_name = mdt[i].substr(6, pos - 6);
+    mnt.push_back(MNT(macro_name, static_cast<int>(i)));
+  }
+  return macro_name;
+}
+
+std::string remove_trailing_whitespaces(std::string string) {
+  if (string.length() > 0) {
+    size_t last = string.find_last_not_of(WHITESPACE);
+    string.erase(last + 1);
+    return string;
+  }
+  return string;
+}
+
+std::string remove_leading_whitespaces(std::string string) {
+  if (string.length() > 0) {
+    size_t first = string.find_first_not_of(WHITESPACE);
+    return string.substr(first);
+  }
+  return string;
+}
+
 int main(void) {
   std::fstream file;
   std::string string;
@@ -69,13 +90,9 @@ int main(void) {
   std::vector<std::pair<std::string, std::vector<std::string>>>
       argument_array_list;
 
-  std::smatch matches;
-  std::regex regex("(&)[^ ]*"); // Regex to find word starting with & (i.e
-                                // parameters for macro)
-
   bool macro_found = false;
 
-  file.open("marco.asm", std::ios::in);
+  file.open("macro.asm", std::ios::in);
 
   if (!file) {
     std::cout << "File can't be opened\n";
@@ -83,21 +100,28 @@ int main(void) {
   }
 
   /*
-   * Checking if string(line) starts with MACRO, if it starts with macro adding
-   * lines to mdt until MEND is found
+   * Checking if string(line) starts with macro, if it starts with macro adding
+   * lines to mdt until mend is found
    * Creating a macro definition table
-   * Code is written assuming that MACRO keyword and macro name are written on
-   * the same line, and MEND is written on a seperate line
+   * Code is written assuming that macro keyword and macro name are written on
+   * the same line, and mend is written on a seperate line
    */
+  // TODO: Add functionality so user can write macro is any cases (MACRO, macro,
+  // MaCro)
   while (!file.eof()) {
     std::getline(file, string);
 
+    string = remove_leading_whitespaces(string);
     string = remove_trailing_whitespaces(string);
-    if (string.find("MACRO") != std::string::npos) {
+
+    std::string lower_cased_string = string;
+    std::transform(lower_cased_string.begin(), lower_cased_string.end(),
+                   lower_cased_string.begin(), ::tolower);
+    if (lower_cased_string.find("macro") != std::string::npos) {
       macro_found = true;
     }
     if (macro_found == true) {
-      if (string.compare("MEND") != 0) {
+      if (lower_cased_string.compare("mend") != 0) {
         if (!string.empty()) {
           mdt.push_back(string);
         }
@@ -108,34 +132,29 @@ int main(void) {
     }
   }
   // Creating a Macro name table
-  /*
-   * TODO: Find a better way to parse lines instead of using regex, regex is way
-   * too slow (takes around 2.7 seconds to run and generates 20k+ plus lines of
-   * assembly)
-   */
   for (size_t i = 0; i < mdt.size(); i++) {
-    if (mdt[i].rfind("MACRO", 0) == 0) {
-      // Starting for 6th index as name of macro name will start from 6th
-      // index(because MACRO consists of 5 letters and 1 letter is "space", so
-      // total 6 letters i.e for 0 to 5th index. Therefore, 6th index) Assuming
-      // keyword macro and marco name are on the same line
-      size_t pos = mdt[i].find(" ", 6);
-      std::string macro_name = mdt[i].substr(6, pos - 6);
-      mnt.push_back(MNT(macro_name, static_cast<int>(i)));
+    if (mdt[i].rfind("macro", 0) == 0) {
+      std::string macro_name;
+      if (mdt[i].compare("macro") == 0) {
+        macro_name = create_mnt(mdt, i + 1, mnt, true);
+        i++;
+      } else {
+        macro_name = create_mnt(mdt, i, mnt, false);
+      }
 
-      // Creating argument array list
+      // Creating argument array list (it is newly created for each macro)
       std::vector<std::string> argument_list;
       // Not using mdt[i] as regex changes the string contents, instead creating
       // a dummy variable
       std::string mdt_i = mdt[i];
-      while (std::regex_search(mdt_i, matches, regex)) {
-        std::string arg = matches[0];
-        if (arg.at(arg.size() - 1) == ',') {
-          argument_list.push_back(arg.substr(0, arg.size() - 1));
-        } else {
-          argument_list.push_back(arg);
-        }
-        mdt_i = matches.suffix().str();
+      size_t first_argument = mdt_i.find_first_of('&');
+      mdt_i.erase(0, first_argument);
+
+      std::stringstream sstream(mdt_i);
+      std::string argument;
+      std::cout << "String = " << mdt_i << "\n";
+      while (std::getline(sstream, argument, ',')) {
+        argument_list.push_back(argument);
       }
       argument_array_list.push_back(std::make_pair(macro_name, argument_list));
     }
