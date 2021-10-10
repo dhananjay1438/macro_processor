@@ -1,3 +1,4 @@
+// Toooo bored to implement pass 2 macro processor
 #include <algorithm>
 #include <array>
 #include <fstream>
@@ -21,6 +22,8 @@
  * }
  *
  * 3) Argument array list (macro name, argument list) {
+ * 		std::string to hold macro name
+ * 		and std::vector<string> to hold parameters
  * 		vector<std::pair<std::string> std::vector<string>>>
  * }
  */
@@ -106,8 +109,6 @@ int main(void) {
    * Code is written assuming that macro keyword and macro name are written on
    * the same line, and mend is written on a seperate line
    */
-  // TODO: Add functionality so user can write macro is any cases (MACRO, macro,
-  // MaCro)
   while (!file.eof()) {
     std::getline(file, string);
 
@@ -136,9 +137,11 @@ int main(void) {
     if (mdt[i].rfind("macro", 0) == 0) {
       std::string macro_name;
       if (mdt[i].compare("macro") == 0) {
+        // If whole line only contains "MACRO" in it
         macro_name = create_mnt(mdt, i + 1, mnt, true);
         i++;
       } else {
+        // If line contains macro plus macro name and arguments
         macro_name = create_mnt(mdt, i, mnt, false);
       }
 
@@ -152,7 +155,6 @@ int main(void) {
 
       std::stringstream sstream(mdt_i);
       std::string argument;
-      std::cout << "String = " << mdt_i << "\n";
       while (std::getline(sstream, argument, ',')) {
         argument_list.push_back(argument);
       }
